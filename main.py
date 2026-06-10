@@ -1,4 +1,3 @@
-# bot.py
 import os
 import discord
 from discord.ext import commands
@@ -20,12 +19,13 @@ def start():
 threading.Thread(target=start).start()
 # -------------------------------
 
-# Intents (IMPORTANT: active Server Members Intent dans le portail Discord)
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 
 bot = commands.Bot(command_prefix='!', intents=intents)
+
+bot_frozen = False  # État du gel
 
 PECHEURS_ROLE = "Pécheurs"
 PECHE_S_CAPITAUX = [
@@ -34,22 +34,16 @@ PECHE_S_CAPITAUX = [
 JEUX_ROLES = ["Valorant", "Genshin Impact", "Resident evil", "Minecraft", "Red Dead", "Roblox", "Jeux indépendants"]
 
 def find_role_by_name(guild, name):
-    """Recherche role case-insensitive"""
     return discord.utils.find(lambda r: r.name.lower() == name.lower(), guild.roles)
 
 async def fetch_annonces_messages():
-    """Récupère les 3 derniers messages du salon '「📆」annonces' (texte + avatar + attachments)"""
     await bot.wait_until_ready()
     if not bot.guilds:
-        print("[fetch_annonces] Aucun serveur connecté.")
         return []
-
     guild = bot.guilds[0]
     channel = discord.utils.get(guild.text_channels, name="「📆」annonces")
     if not channel:
-        print("[fetch_annonces] Salon '「📆」annonces' introuvable.")
         return []
-
     messages_data = []
     async for msg in channel.history(limit=3):
         try:
@@ -66,28 +60,18 @@ async def fetch_annonces_messages():
     return messages_data
 
 async def build_players(guild):
-    """Construit le dict players (nom + avatar) en cherchant les membres ayant les deux rôles."""
     role_pecheurs = find_role_by_name(guild, PECHEURS_ROLE)
-    if not role_pecheurs:
-        print("[build_players] Role 'Pécheurs' introuvable sur le serveur !")
-
     players = {}
     for peche in PECHE_S_CAPITAUX:
         role_peche = find_role_by_name(guild, peche)
         if not role_peche:
-            print(f"[build_players] Role '{peche}' introuvable.")
             players[peche] = {"name": "Place vacante", "avatar": None}
             continue
-
         joueur = None
-
-        # 1) essaye cache
         for member in guild.members:
             if role_pecheurs in member.roles and role_peche in member.roles:
                 joueur = member
                 break
-
-        # 2) fallback fetch si pas trouvé (nécessite intent membres activé)
         if not joueur:
             try:
                 async for member in guild.fetch_members(limit=None):
@@ -96,7 +80,6 @@ async def build_players(guild):
                         break
             except Exception as e:
                 print(f"[build_players] Erreur fetch_members: {e}")
-
         if joueur:
             try:
                 avatar = joueur.display_avatar.url
@@ -105,44 +88,30 @@ async def build_players(guild):
             players[peche] = {"name": joueur.display_name, "avatar": avatar}
         else:
             players[peche] = {"name": "Place vacante", "avatar": None}
-
     return players
-    
+
 async def build_apotres(guild):
-    """Construit le dict apotres (plusieurs membres possibles par péché)."""
     role_apotre = find_role_by_name(guild, "Apotre")
     if not role_apotre:
-        print("[build_apotres] Rôle 'Apotre' introuvable !")
         return {peche: [] for peche in PECHE_S_CAPITAUX}
-
     apotres = {peche: [] for peche in PECHE_S_CAPITAUX}
-
     for peche in PECHE_S_CAPITAUX:
         role_peche = find_role_by_name(guild, peche)
         if not role_peche:
-            print(f"[build_apotres] Rôle '{peche}' introuvable.")
             continue
-
-        # Cherche tous les membres avec Apotre + péché
         for member in guild.members:
             if role_apotre in member.roles and role_peche in member.roles:
                 try:
                     avatar = member.display_avatar.url
                 except Exception:
                     avatar = member.avatar.url if member.avatar else member.default_avatar.url
-                apotres[peche].append({
-                    "name": member.display_name,
-                    "avatar": avatar
-                })
-
+                apotres[peche].append({"name": member.display_name, "avatar": avatar})
     return apotres
-    
+
 async def build_membres(guild):
     role_membres = find_role_by_name(guild, "Membres")
     if not role_membres:
-        print("[build_membres] Role 'Membres' introuvable.")
         return []
-
     membres_list = []
     for member in guild.members:
         if role_membres in member.roles:
@@ -150,7 +119,6 @@ async def build_membres(guild):
                 avatar = member.display_avatar.url
             except Exception:
                 avatar = member.avatar.url if member.avatar else member.default_avatar.url
-
             roles = [r.name for r in member.roles if r.name != "@everyone"]
             membres_list.append({
                 "name": member.display_name,
@@ -158,11 +126,9 @@ async def build_membres(guild):
                 "avatar": avatar,
                 "roles": roles
             })
-            
     return membres_list
-    
+
 async def build_classement(guild):
-    """Construit le classement des péchés capitaux (comme la commande !classement)"""
     classement = []
     for peche in PECHE_S_CAPITAUX:
         role_peche = find_role_by_name(guild, peche)
@@ -171,7 +137,6 @@ async def build_classement(guild):
             continue
         count = len(role_peche.members)
         if count == 0:
-            # fallback : fetch members
             try:
                 async for m in guild.fetch_members(limit=None):
                     if role_peche in m.roles:
@@ -179,12 +144,10 @@ async def build_classement(guild):
             except Exception as e:
                 print(f"[build_classement] fetch_members erreur: {e}")
         classement.append({"peche": peche, "count": count})
-    # tri décroissant
     classement.sort(key=lambda x: x["count"], reverse=True)
     return classement
 
 async def build_classement_jeux(guild):
-    """Construit le classement des jeux (par nombre de membres dans chaque rôle)"""
     classement = []
     for jeu in JEUX_ROLES:
         role_jeu = find_role_by_name(guild, jeu)
@@ -193,7 +156,6 @@ async def build_classement_jeux(guild):
             continue
         count = len(role_jeu.members)
         if count == 0:
-            # fallback si jamais
             try:
                 async for m in guild.fetch_members(limit=None):
                     if role_jeu in m.roles:
@@ -203,12 +165,15 @@ async def build_classement_jeux(guild):
         classement.append({"jeu": jeu, "count": count})
     classement.sort(key=lambda x: x["count"], reverse=True)
     return classement
-    
+
 async def periodic_task():
     await bot.wait_until_ready()
     print("[Bot] Tâche périodique démarrée")
     while not bot.is_closed():
         try:
+            if bot_frozen:
+                await asyncio.sleep(60)
+                continue
             if not bot.is_ready():
                 await asyncio.sleep(10)
                 continue
@@ -218,21 +183,12 @@ async def periodic_task():
 
             app_info = await bot.application_info()
             owner_name = app_info.owner.name
-
             guild = bot.guilds[0]
-
-            # build players (robuste)
             players = await build_players(guild)
-
-            # récupérer 3 dernières annonces
             annonces = await fetch_annonces_messages()
-
             classement = await build_classement(guild)
-
             classement_jeux = await build_classement_jeux(guild)
-
             apotres = await build_apotres(guild)
-            
             membres = await build_membres(guild)
 
             payload = {
@@ -244,7 +200,7 @@ async def periodic_task():
                 "ClassementJeux": classement_jeux,
                 "membres": membres,
             }
-            
+
             url = os.environ.get("API_URL", "https://siteapi-2.onrender.com/update")
             try:
                 response = requests.post(url, json=payload, timeout=10)
@@ -266,6 +222,13 @@ async def on_ready():
     print(f"Connecté à {len(bot.guilds)} serveur(s)")
     bot.loop.create_task(periodic_task())
 
+@bot.command(name="stop")
+@commands.is_owner()
+async def stop(ctx):
+    global bot_frozen
+    bot_frozen = True
+    await ctx.send("🔒 Bot gelé. Il ignore tout jusqu'au prochain redémarrage.")
+
 @bot.command(name="classement")
 async def classement(ctx):
     guild = ctx.guild
@@ -277,7 +240,6 @@ async def classement(ctx):
             continue
         count = len(role_peche.members)
         if count == 0:
-            # fallback : fetch members
             count = 0
             try:
                 async for m in guild.fetch_members(limit=None):
@@ -291,7 +253,7 @@ async def classement(ctx):
     for i, (peche, count) in enumerate(classement, 1):
         msg += f"**{i}. {peche}** — {count} membre(s)\n"
     await ctx.send(msg)
-    
+
 @bot.command(name="classement-jeux")
 async def classement_jeux(ctx):
     guild = ctx.guild
@@ -300,25 +262,22 @@ async def classement_jeux(ctx):
     for i, entry in enumerate(classement, 1):
         msg += f"**{i}. {entry['jeu']}** — {entry['count']} membre(s)\n"
     await ctx.send(msg)
-    
+
 @bot.command(name="tg")
 async def tg(ctx):
     msg = "**tg avec ton goumin de con tfaçon c'est qu'une pute**\n"
     await ctx.send(msg)
-    
+
 @bot.command(name="phoebe")
-async def tg(ctx):
+async def phoebe(ctx):
     msg = "https://tenor.com/view/want-demand-gif-12030398"
     await ctx.send(msg)
-    
-@bot.command(name ="love")
-async def love(ctx, member: discord.Member):
-    # Générer un pourcentage aléatoire
-    pourcentage = random.randint(0, 100)
 
-    # Message de réponse
+@bot.command(name="love")
+async def love(ctx, member: discord.Member):
+    pourcentage = random.randint(0, 100)
     await ctx.send(f"💖 Test d'amour entre **{ctx.author.display_name}** et **{member.display_name}** : {pourcentage}% 💖")
-# Optional: commande manuelle pour forcer l'envoi et debug
+
 @bot.command(name="moon.update")
 @commands.is_owner()
 async def force_update(ctx):
@@ -331,15 +290,10 @@ async def force_update(ctx):
     owner_name = app_info.owner.name
     players = await build_players(guild)
     annonces = await fetch_annonces_messages()
-
     classement = await build_classement(guild)
-
     classement_jeux = await build_classement_jeux(guild)
-
     apotres = await build_apotres(guild)
-            
     membres = await build_membres(guild)
-
     payload = {
         "owner": owner_name,
         "players": players,
@@ -363,6 +317,9 @@ def ressemble_bonjour(texte):
 
 @bot.event
 async def on_message(message):
+    if bot_frozen:
+        return  # Ignore absolument tout
+
     if message.author == bot.user:
         return
 
@@ -388,14 +345,11 @@ async def on_member_remove(member):
 async def sentence(ctx, member: discord.Member):
     sanctions = ["rien", "kick", "ban"]
     choix = random.choice(sanctions)
-
     if choix == "rien":
         await ctx.send(f"⚖️ {member.mention} est jugé... **innocent** ! Aucune sanction cette fois. 🍀")
-
     elif choix == "kick":
         await member.kick(reason="Sentence aléatoire !")
         await ctx.send(f"👢 {member.mention} a été **kick** ! Le destin en a décidé ainsi.")
-
     elif choix == "ban":
         duree_jours = random.choice([1, 3, 7, 14, 30])
         await ctx.send(f"🔨 {member.mention} a été **banni pour {duree_jours} jour(s)** ! La justice est aveugle.")
@@ -410,20 +364,8 @@ async def sentence_error(ctx, error):
     elif isinstance(error, commands.MissingPermissions):
         await ctx.send("🚫 T'as pas les droits pour ça.")
 
-# Token & run
 token = os.environ.get('TOKEN')
 if not token:
     print("Erreur : variable d'environnement TOKEN absente ou vide.")
     exit(1)
 bot.run(token)
-
-
-
-
-
-
-
-
-
-
-
