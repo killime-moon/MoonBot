@@ -6,6 +6,7 @@ import requests
 import asyncio
 import threading
 import random
+import re
 from flask import Flask
 
 # --- KEEP-ALIVE (optionnel) ---
@@ -368,7 +369,7 @@ async def on_message(message):
     if bot.user.mentioned_in(message) or ressemble_bonjour(message.content):
         reponses = [
             "Tg gros con",
-            "T'as crue t'avais des potes ?",
+            "T'as cru t'avais des potes ?",
             "Franchement ferme là",
             "ok.",
         ]
