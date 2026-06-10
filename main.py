@@ -409,8 +409,6 @@ async def sentence_error(ctx, error):
     elif isinstance(error, commands.MissingPermissions):
         await ctx.send("🚫 T'as pas les droits pour ça.")
 
-bot.run("TON_TOKEN")
-
 # Token & run
 token = os.environ.get('TOKEN')
 if not token:
