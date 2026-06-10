@@ -355,21 +355,41 @@ async def force_update(ctx):
     except Exception as e:
         await ctx.send(f"Erreur envoi: {e}")
 
-import discord
-from discord.ext import commands
-import random
-from datetime import timedelta
+def ressemble_bonjour(texte):
+    texte = texte.lower()
+    texte = re.sub(r'(.)\1+', r'\1', texte)
+    return "bonjour" in texte
 
-# --- Event : message quand quelqu'un quitte ---
+@bot.event
+async def on_message(message):
+    if message.author == bot.user:
+        return
+
+    if bot.user.mentioned_in(message) or ressemble_bonjour(message.content):
+        reponses = [
+            "Bonjour ! 👋 Comment ça va ?",
+            "Salut salut ! 😄",
+            "Ah, on parle de moi ? 👀",
+            "Présent ! 🙋 T'as besoin de quelque chose ?",
+            "Bonjour à toi ! ☀️",
+        ]
+        await message.channel.send(random.choice(reponses))
+
+    await bot.process_commands(message)
+
 @bot.event
 async def on_member_remove(member):
-    channel = discord.utils.get(member.guild.text_channels, name="général")  # Change le nom du channel
+    channel = discord.utils.get(member.guild.text_channels, name="「💬」général")
     if channel:
         await channel.send(f"👋 **{member.display_name}** vient de quitter le serveur. Bon débarras (ou pas) !")
 
-# --- Commande !sentence @mention ---
+@bot.command(name="phoebe")
+async def tg(ctx):
+    msg = "https://tenor.com/view/want-demand-gif-12030398"
+    await ctx.send(msg)
+
 @bot.command(name="sentence")
-@commands.has_permissions(kick_members=True)  # Réserve la commande aux modérateurs
+@commands.has_permissions(kick_members=True)
 async def sentence(ctx, member: discord.Member):
     sanctions = ["rien", "kick", "ban"]
     choix = random.choice(sanctions)
@@ -385,17 +405,17 @@ async def sentence(ctx, member: discord.Member):
         duree_jours = random.choice([1, 3, 7, 14, 30])
         await ctx.send(f"🔨 {member.mention} a été **banni pour {duree_jours} jour(s)** ! La justice est aveugle.")
         await member.ban(reason=f"Sentence aléatoire ({duree_jours}j)")
-        # Unban automatique après la durée
         await asyncio.sleep(duree_jours * 86400)
         await ctx.guild.unban(member)
 
-# Gestion d'erreur si mauvaise mention
 @sentence.error
 async def sentence_error(ctx, error):
     if isinstance(error, commands.MemberNotFound):
         await ctx.send("❌ Membre introuvable. Mentionne quelqu'un du serveur.")
     elif isinstance(error, commands.MissingPermissions):
         await ctx.send("🚫 T'as pas les droits pour ça.")
+
+bot.run("TON_TOKEN")
 
 # Token & run
 token = os.environ.get('TOKEN')
