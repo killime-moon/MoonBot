@@ -367,11 +367,10 @@ async def on_message(message):
 
     if bot.user.mentioned_in(message) or ressemble_bonjour(message.content):
         reponses = [
-            "Bonjour ! 👋 Comment ça va ?",
-            "Salut salut ! 😄",
-            "Ah, on parle de moi ? 👀",
-            "Présent ! 🙋 T'as besoin de quelque chose ?",
-            "Bonjour à toi ! ☀️",
+            "Tg gros con",
+            "T'as crue t'avais des potes ?",
+            "Franchement ferme là",
+            "ok.",
         ]
         await message.channel.send(random.choice(reponses))
 
@@ -382,11 +381,6 @@ async def on_member_remove(member):
     channel = discord.utils.get(member.guild.text_channels, name="「💬」général")
     if channel:
         await channel.send(f"👋 **{member.display_name}** vient de quitter le serveur. Bon débarras (ou pas) !")
-
-@bot.command(name="phoebe")
-async def tg(ctx):
-    msg = "https://tenor.com/view/want-demand-gif-12030398"
-    await ctx.send(msg)
 
 @bot.command(name="sentence")
 @commands.has_permissions(kick_members=True)
