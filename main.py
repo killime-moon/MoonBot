@@ -345,17 +345,25 @@ async def on_member_remove(member):
 async def sentence(ctx, member: discord.Member):
     sanctions = ["rien", "kick", "ban"]
     choix = random.choice(sanctions)
-    if choix == "rien":
-        await ctx.send(f"⚖️ {member.mention} est jugé... **innocent** ! Aucune sanction cette fois. 🍀")
-    elif choix == "kick":
-        await member.kick(reason="Sentence aléatoire !")
-        await ctx.send(f"👢 {member.mention} a été **kick** ! Le destin en a décidé ainsi.")
-    elif choix == "ban":
-        duree_jours = random.choice([1, 3, 7, 14, 30])
-        await ctx.send(f"🔨 {member.mention} a été **banni pour {duree_jours} jour(s)** ! La justice est aveugle.")
-        await member.ban(reason=f"Sentence aléatoire ({duree_jours}j)")
-        await asyncio.sleep(duree_jours * 86400)
-        await ctx.guild.unban(member)
+
+    try:
+        if choix == "rien":
+            await ctx.send(f"⚖️ {member.mention} est jugé... **innocent** ! Aucune sanction cette fois. 🍀")
+
+        elif choix == "kick":
+            await ctx.send(f"👢 {member.mention} a été **kick** ! Le destin en a décidé ainsi.")
+            await member.kick(reason="Sentence aléatoire !")
+
+        elif choix == "ban":
+            duree_jours = random.choice([1, 3, 7, 14, 30])
+            await ctx.send(f"🔨 {member.mention} a été **banni pour {duree_jours} jour(s)** ! La justice est aveugle.")
+            # Ban avec delete_message_days, pas de sleep — unban via Discord UI ou tâche séparée
+            await member.ban(reason=f"Sentence aléatoire ({duree_jours}j)", delete_message_days=0)
+
+    except discord.Forbidden:
+        await ctx.send("❌ Je n'ai pas les permissions nécessaires pour ça.")
+    except discord.HTTPException as e:
+        await ctx.send(f"❌ Erreur Discord : {e}")
 
 @sentence.error
 async def sentence_error(ctx, error):
