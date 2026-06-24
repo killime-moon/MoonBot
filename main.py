@@ -6,6 +6,7 @@ import asyncio
 import threading
 import random
 import re
+import datetime
 from flask import Flask
 
 # --- KEEP-ALIVE (optionnel) ---
@@ -371,6 +372,113 @@ async def sentence_error(ctx, error):
         await ctx.send("❌ Membre introuvable. Mentionne quelqu'un du serveur.")
     elif isinstance(error, commands.MissingPermissions):
         await ctx.send("🚫 T'as pas les droits pour ça.")
+
+@bot.command(name="moon.analysis_CM")
+@commands.has_permissions(kick_members=True)
+async def analysis_cm(ctx):
+    await ctx.send("🔍 Analyse en cours, ça peut prendre un moment...")
+
+    guild = ctx.guild
+    depuis = discord.utils.utcnow() - datetime.timedelta(days=30)
+
+    # Collecte des données par membre
+    stats = {}  # user_id -> {"total": int, "courts": int, "rafales": int, "anciennete_jours": int}
+
+    canaux = guild.text_channels
+    for channel in canaux:
+        try:
+            historique = []
+            async for msg in channel.history(limit=2000, after=depuis, oldest_first=True):
+                if msg.author.bot:
+                    continue
+                uid = msg.author.id
+                nom = msg.author.display_name
+                if uid not in stats:
+                    anciennete = (discord.utils.utcnow() - msg.author.created_at).days
+                    stats[uid] = {
+                        "nom": nom,
+                        "total": 0,
+                        "courts": 0,
+                        "rafales": 0,
+                        "anciennete_jours": max(anciennete, 1),
+                        "dernier_msg_time": None,
+                        "dernier_msg_uid": None,
+                    }
+                historique.append(msg)
+
+            # Calcul des rafales (messages consécutifs du même user en < 10s)
+            for i, msg in enumerate(historique):
+                if msg.author.bot:
+                    continue
+                uid = msg.author.id
+                if uid not in stats:
+                    continue
+
+                contenu = msg.content.strip()
+                stats[uid]["total"] += 1
+
+                # Message court = moins de 15 caractères (hors espaces)
+                if len(contenu.replace(" ", "")) < 15:
+                    stats[uid]["courts"] += 1
+
+                # Rafale = même user, message précédent < 8 secondes
+                if i > 0:
+                    prev = historique[i - 1]
+                    if (
+                        prev.author.id == uid
+                        and (msg.created_at - prev.created_at).total_seconds() < 8
+                    ):
+                        stats[uid]["rafales"] += 1
+
+        except discord.Forbidden:
+            continue
+        except Exception as e:
+            print(f"[analysis_CM] Erreur canal {channel.name}: {e}")
+            continue
+
+    if not stats:
+        await ctx.send("Aucune donnée trouvée sur les 30 derniers jours.")
+        return
+
+    # Score de suspicion normalisé par l'ancienneté
+    # Ratio courts/total + ratio rafales/total, pondéré par volume
+    # Les anciens sont avantagés : on divise par log(ancienneté) pour lisser
+    import math
+
+    resultats = []
+    for uid, d in stats.items():
+        if d["total"] < 10:  # Trop peu de messages pour être significatif
+            continue
+        ratio_courts = d["courts"] / d["total"]
+        ratio_rafales = d["rafales"] / d["total"]
+        # Score brut de triche (0 à 1)
+        score_brut = (ratio_courts * 0.5) + (ratio_rafales * 0.5)
+        # Pénalité ancienneté : plus t'es vieux, moins c'est suspect (log lisse la courbe)
+        facteur_anciennete = math.log10(max(d["anciennete_jours"], 2))
+        # Score final : volume amplifie (les gros spammeurs ressortent)
+        score_final = (score_brut * math.log10(d["total"])) / facteur_anciennete
+        resultats.append((d["nom"], score_final, d["total"], d["courts"], d["rafales"]))
+
+    if not resultats:
+        await ctx.send("Pas assez de données pour établir un classement fiable.")
+        return
+
+    resultats.sort(key=lambda x: x[1], reverse=True)
+    top3 = resultats[:3]
+
+    medailles = ["🥇", "🥈", "🥉"]
+    msg = "**📊 Top 3 des tricheurs de levels (30 derniers jours)**\n"
+    msg += "*(score basé sur les messages courts + rafales, ajusté par ancienneté)*\n\n"
+    for i, (nom, score, total, courts, rafales) in enumerate(top3):
+        msg += (
+            f"{medailles[i]} **{nom}**\n"
+            f"   └ Score suspect : `{score:.2f}` | "
+            f"Messages : `{total}` | "
+            f"Courts : `{courts}` | "
+            f"Rafales : `{rafales}`\n\n"
+        )
+
+    await ctx.send(msg)
 
 token = os.environ.get('TOKEN')
 if not token:
